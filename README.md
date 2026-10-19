@@ -9,7 +9,7 @@ A lightweight screen magnifier for Linux/X11, designed to work with IceWM and Xf
 ## Features
 
 - A frameless magnifier that follows the mouse cursor.
-- Starts at **2× zoom**. Use the mouse wheel to zoom in or out, up to the configured maximum.
+- Starts at **2× zoom**. Use the mouse wheel to zoom in or out, up to the configured maximum of **20×**.
 - Keeps a small system-tray icon with a menu for showing/hiding the magnifier, opening Preferences, and exiting.
 - `Ctrl+Alt+M` toggles the magnifier.
 - `Esc` hides the magnifier without quitting the application.
@@ -18,7 +18,7 @@ A lightweight screen magnifier for Linux/X11, designed to work with IceWM and Xf
   2. A LaTeX `xcolor` CMYK definition.
   3. A LaTeX `xcolor` RGB definition.
   4. Plain RGB values, for example `R=100, G=12, B=86`.
-- Displays the sampled pixel's RGB and CMYK values.
+- Displays the sampled pixel's RGB and CMYK values in a compact status area: a color swatch and RGB on the first line, CMYK percentages on the second, and a single-line LaTeX `xcolor` CMYK definition below.
 - Optional pixel scale with its origin at the **bottom-left corner** of the magnifier's image area. Tick marks are drawn every 5 source pixels and labels every 10 pixels.
 - Saves settings in `~/.config/icewm-magnifier/config.json`.
 
@@ -41,7 +41,7 @@ If your distribution blocks `pip --user` for system Python, use your distributio
 
 ## Run
 
-Save `icewm_cursor_magnifier_english.py` (or rename it to `icewm_cursor_magnifier.py`) in a convenient location, then run:
+Save `icewm_cursor_magnifier_english_v2.py` (or rename it to `icewm_cursor_magnifier.py`) in a convenient location, then run:
 
 ```bash
 python3 ~/Desktop/icewm_cursor_magnifier.py
@@ -64,12 +64,14 @@ The tray icon should appear in the notification area. If the application reports
 
 ## Preferences
 
-- **Global hotkey:** defaults to `<ctrl>+<alt>+m`. Restart the application after changing it.
-- **Window width/height:** size of the magnifier window in screen pixels.
-- **Initial zoom:** starting magnification.
-- **Maximum zoom:** maximum magnification, up to 32×.
-- **Press C to copy:** choose image, LaTeX CMYK, LaTeX RGB, or plain RGB values.
-- **Pixel scale:** show or hide the pixel scale and coordinates. Enabled by default.
+Preferences is organized into four tabs:
+
+1. **Magnifier** — window width/height, initial zoom, and maximum zoom. The maximum is capped at **20×**.
+2. **Display** — pixel scale, center crosshair, and cursor-following options.
+3. **Color & Copy** — choose what `C` copies: RGB values, LaTeX `xcolor` CMYK, LaTeX `xcolor` RGB, or the magnified image.
+4. **Shortcuts** — configure the global toggle hotkey and review the other controls. Restart the application after changing the global hotkey.
+
+The dialog includes **Restore Defaults**, **Apply**, **Cancel**, and **OK**. Apply saves and applies the settings while leaving Preferences open. Settings are stored in `~/.config/icewm-magnifier/config.json`.
 
 ## Start automatically with IceWM
 
@@ -166,7 +168,7 @@ Ha a Linux-disztribúció tiltja a `pip --user` használatát a rendszer-Pythonh
 
 ## Indítás
 
-Mentsd az `icewm_cursor_magnifier_english.py` fájlt (vagy nevezd át `icewm_cursor_magnifier.py` névre) egy megfelelő könyvtárba, majd futtasd:
+Mentsd az `icewm_cursor_magnifier_english_v2.py` fájlt (vagy nevezd át `icewm_cursor_magnifier.py` névre) egy megfelelő könyvtárba, majd futtasd:
 
 ```bash
 python3 ~/Desktop/icewm_cursor_magnifier.py
@@ -189,12 +191,14 @@ Az ikonnak meg kell jelennie az értesítési területen. Ha a program azt jelzi
 
 ## Preferences
 
-- **Global hotkey:** alapértelmezése `<ctrl>+<alt>+m`. Módosítás után újra kell indítani a programot.
-- **Window width/height:** a nagyítóablak mérete képernyő-pixelben.
-- **Initial zoom:** kezdő nagyítás.
-- **Maximum zoom:** maximális nagyítás, legfeljebb 32×.
-- **Press C to copy:** a kép, a LaTeX CMYK, a LaTeX RGB vagy az egyszerű RGB-értékek közül választhatsz.
-- **Pixel scale:** a pixelbeosztás és koordináták megjelenítése vagy elrejtése. Alapértelmezetten be van kapcsolva.
+A Preferences ablak négy külön fülből áll:
+
+1. **Magnifier** — az ablak szélessége/magassága, kezdő nagyítás és maximális nagyítás. A felső korlát **20×**.
+2. **Display** — pixelbeosztás, középső célkereszt és kurzorkövetés.
+3. **Color & Copy** — a `C` billentyű másolási módja: RGB-értékek, LaTeX `xcolor` CMYK, LaTeX `xcolor` RGB vagy a nagyított képrészlet.
+4. **Shortcuts** — a globális kapcsoló-billentyűparancs beállítása és a többi vezérlés áttekintése. A globális gyorsbillentyű módosítása után újra kell indítani a programot.
+
+Az ablak alján **Restore Defaults**, **Apply**, **Cancel** és **OK** gombok találhatók. Az Apply menti és azonnal alkalmazza a beállításokat, de nyitva hagyja az ablakot. A beállítások helye: `~/.config/icewm-magnifier/config.json`.
 
 ## Automatikus indítás IceWM alatt
 
