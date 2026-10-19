@@ -4,14 +4,14 @@
 # Kurzor-nagyító automatikus indítása IceWM alatt
 # AV Linux / Debian / X11
 
-APP="$HOME/Desktop/icewm_cursor_magnifier.py"
+APP="/usr/local/share/cursor_magnifier.py"
 LOG_DIR="$HOME/.local/state"
 LOG="$LOG_DIR/icewm-magnifier.log"
 
 mkdir -p "$LOG_DIR"
 
 # Ne induljon el kétszer.
-if pgrep -u "$(id -u)" -f '[i]cewm_cursor_magnifier.py' >/dev/null; then
+if pgrep -u "$(id -u)" -f 'cursor_magnifier.py' >/dev/null; then
     exit 0
 fi
 
