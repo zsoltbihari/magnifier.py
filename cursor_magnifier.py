@@ -16,7 +16,7 @@ from PySide6.QtGui import QColor, QGuiApplication, QCursor, QPainter, QPen, QPix
 from PySide6.QtWidgets import (
     QApplication, QWidget, QLabel, QHBoxLayout, QVBoxLayout,
     QDialog, QFormLayout, QLineEdit, QSpinBox, QPushButton,
-    QDialogButtonBox, QMessageBox, QStyle, QSystemTrayIcon, QMenu, QComboBox, QCheckBox
+    QDialogButtonBox, QMessageBox, QStyle, QSystemTrayIcon, QMenu, QComboBox, QCheckBox, QTabWidget, QGroupBox
 )
 
 try:
@@ -39,7 +39,7 @@ DEFAULTS = {
     "window_width": 520,
     "window_height": 360,
     "zoom": 2.0,
-    "max_zoom": 16.0,
+    "max_zoom": 20.0,
     "follow_cursor": True,
     "show_crosshair": True,
     "show_pixel_scale": True,
@@ -69,6 +69,8 @@ def load_config():
         if CONFIG_FILE.exists():
             user_config = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
             config.update({k: v for k, v in user_config.items() if k in DEFAULTS})
+            config["max_zoom"] = min(20.0, max(2.0, float(config.get("max_zoom", 20.0))))
+            config["zoom"] = min(float(config.get("zoom", 2.0)), config["max_zoom"])
     except Exception as exc:
         print(f"Could not load settings: {exc}", file=sys.stderr)
     return config
@@ -98,11 +100,19 @@ class HotkeyBridge(QObject):
 
 
 class SettingsDialog(QDialog):
+    settings_applied = Signal(dict)
+
     def __init__(self, config, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Magnifier Preferences")
+        self.setWindowTitle("Cursor Magnifier Preferences")
         self.setModal(True)
-        self.hotkey = QLineEdit(str(config["hotkey"]))
+        self.resize(500, 390)
+
+        self.tabs = QTabWidget()
+
+        # Tab 1: Magnifier
+        magnifier_tab = QWidget()
+        magnifier_form = QFormLayout(magnifier_tab)
         self.width_box = QSpinBox()
         self.width_box.setRange(180, 1600)
         self.width_box.setValue(int(config["window_width"]))
@@ -110,60 +120,126 @@ class SettingsDialog(QDialog):
         self.height_box.setRange(140, 1200)
         self.height_box.setValue(int(config["window_height"]))
         self.zoom_box = QSpinBox()
-        self.zoom_box.setRange(2, int(float(config["max_zoom"])))
-        self.zoom_box.setValue(max(2, int(float(config["zoom"]))))
+        self.zoom_box.setRange(2, 20)
+        self.zoom_box.setValue(min(20, max(2, int(float(config["zoom"])))) )
         self.max_zoom_box = QSpinBox()
-        self.max_zoom_box.setRange(2, 32)
-        self.max_zoom_box.setValue(int(float(config["max_zoom"])))
+        self.max_zoom_box.setRange(2, 20)
+        self.max_zoom_box.setValue(min(20, max(2, int(float(config.get("max_zoom", 20.0))))))
+        self.zoom_box.setMaximum(self.max_zoom_box.value())
+        self.max_zoom_box.valueChanged.connect(self._maximum_zoom_changed)
+        magnifier_form.addRow("Window width (px):", self.width_box)
+        magnifier_form.addRow("Window height (px):", self.height_box)
+        magnifier_form.addRow("Initial zoom:", self.zoom_box)
+        magnifier_form.addRow("Maximum zoom:", self.max_zoom_box)
+        zoom_note = QLabel("The maximum magnification is limited to 20×.")
+        zoom_note.setWordWrap(True)
+        magnifier_form.addRow(zoom_note)
+        self.tabs.addTab(magnifier_tab, "Magnifier")
 
+        # Tab 2: Display
+        display_tab = QWidget()
+        display_layout = QVBoxLayout(display_tab)
+        display_group = QGroupBox("Magnifier overlay")
+        display_group_layout = QVBoxLayout(display_group)
+        self.pixel_scale_box = QCheckBox("Show pixel scale and px coordinates")
+        self.pixel_scale_box.setChecked(bool(config.get("show_pixel_scale", True)))
+        self.crosshair_box = QCheckBox("Show center crosshair")
+        self.crosshair_box.setChecked(bool(config.get("show_crosshair", True)))
+        self.follow_cursor_box = QCheckBox("Follow mouse cursor")
+        self.follow_cursor_box.setChecked(bool(config.get("follow_cursor", True)))
+        display_group_layout.addWidget(self.pixel_scale_box)
+        display_group_layout.addWidget(self.crosshair_box)
+        display_group_layout.addWidget(self.follow_cursor_box)
+        display_layout.addWidget(display_group)
+        display_layout.addStretch(1)
+        self.tabs.addTab(display_tab, "Display")
+
+        # Tab 3: Color & Copy
+        color_tab = QWidget()
+        color_layout = QVBoxLayout(color_tab)
+        color_group = QGroupBox("Copy with C while the magnifier is visible")
+        color_form = QFormLayout(color_group)
         self.copy_mode_box = QComboBox()
         self.copy_modes = [
-            ("magnified_area", "Magnified area (image)"),
-            ("latex_cmyk", "LaTeX CMYK code"),
-            ("latex_rgb", "LaTeX RGB code"),
             ("rgb_values", "RGB values: R=100, G=12, B=86"),
+            ("latex_cmyk", "LaTeX xcolor — CMYK"),
+            ("latex_rgb", "LaTeX xcolor — RGB"),
+            ("magnified_area", "Magnified area (image)"),
         ]
         for key, label in self.copy_modes:
             self.copy_mode_box.addItem(label, key)
         current_index = self.copy_mode_box.findData(config.get("copy_mode", "magnified_area"))
         self.copy_mode_box.setCurrentIndex(max(0, current_index))
+        color_form.addRow("Copy format:", self.copy_mode_box)
+        color_note = QLabel("The status area displays RGB, CMYK percentages and a one-line LaTeX xcolor definition.")
+        color_note.setWordWrap(True)
+        color_layout.addWidget(color_group)
+        color_layout.addWidget(color_note)
+        color_layout.addStretch(1)
+        self.tabs.addTab(color_tab, "Color & Copy")
 
-        self.pixel_scale_box = QCheckBox("Show pixel scale and px coordinates")
-        self.pixel_scale_box.setChecked(bool(config.get("show_pixel_scale", True)))
+        # Tab 4: Shortcuts
+        shortcuts_tab = QWidget()
+        shortcuts_form = QFormLayout(shortcuts_tab)
+        self.hotkey = QLineEdit(str(config["hotkey"]))
+        shortcuts_form.addRow("Global toggle hotkey:", self.hotkey)
+        shortcuts_form.addRow("Show / hide:", QLabel("Ctrl + Alt + M (default)"))
+        shortcuts_form.addRow("Copy selected data:", QLabel("C (while magnifier is visible)"))
+        shortcuts_form.addRow("Hide magnifier:", QLabel("Esc"))
+        shortcuts_form.addRow("Reset zoom:", QLabel("Middle-click the magnifier"))
+        shortcut_note = QLabel("Restart the application after changing the global hotkey.")
+        shortcut_note.setWordWrap(True)
+        shortcuts_form.addRow(shortcut_note)
+        self.tabs.addTab(shortcuts_tab, "Shortcuts")
 
-        form = QFormLayout()
-        form.addRow("Global hotkey (pynput):", self.hotkey)
-        form.addRow("Window width (px):", self.width_box)
-        form.addRow("Window height (px):", self.height_box)
-        form.addRow("Initial zoom:", self.zoom_box)
-        form.addRow("Maximum zoom:", self.max_zoom_box)
-        form.addRow("Press C to copy:", self.copy_mode_box)
-        form.addRow("Pixel scale:", self.pixel_scale_box)
-
-        note = QLabel(
-            "Example: <ctrl>+<alt>+m\n"
-            "Restart the application after changing the global hotkey."
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.RestoreDefaults |
+            QDialogButtonBox.StandardButton.Apply |
+            QDialogButtonBox.StandardButton.Ok |
+            QDialogButtonBox.StandardButton.Cancel
         )
-        note.setWordWrap(True)
-
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok |
-                                   QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
+        self.apply_button = buttons.button(QDialogButtonBox.StandardButton.Apply)
+        self.apply_button.clicked.connect(self._apply_preview)
+        buttons.button(QDialogButtonBox.StandardButton.RestoreDefaults).clicked.connect(self._restore_defaults)
+
         layout = QVBoxLayout(self)
-        layout.addLayout(form)
-        layout.addWidget(note)
+        layout.addWidget(self.tabs)
         layout.addWidget(buttons)
 
+    def _maximum_zoom_changed(self, value):
+        self.zoom_box.setMaximum(value)
+        if self.zoom_box.value() > value:
+            self.zoom_box.setValue(value)
+
+    def _apply_preview(self):
+        # Apply settings immediately while keeping Preferences open.
+        self.settings_applied.emit(self.values())
+
+    def _restore_defaults(self):
+        defaults = DEFAULTS
+        self.hotkey.setText(str(defaults["hotkey"]))
+        self.width_box.setValue(int(defaults["window_width"]))
+        self.height_box.setValue(int(defaults["window_height"]))
+        self.max_zoom_box.setValue(20)
+        self.zoom_box.setValue(int(defaults["zoom"]))
+        self.pixel_scale_box.setChecked(bool(defaults["show_pixel_scale"]))
+        self.crosshair_box.setChecked(bool(defaults["show_crosshair"]))
+        self.follow_cursor_box.setChecked(bool(defaults["follow_cursor"]))
+        idx = self.copy_mode_box.findData(defaults["copy_mode"])
+        self.copy_mode_box.setCurrentIndex(max(0, idx))
+
     def values(self):
+        maximum = min(20, max(2, self.max_zoom_box.value()))
         return {
             "hotkey": self.hotkey.text().strip(),
             "window_width": self.width_box.value(),
             "window_height": self.height_box.value(),
-            "zoom": float(self.zoom_box.value()),
-            "max_zoom": float(self.max_zoom_box.value()),
-            "follow_cursor": True,
-            "show_crosshair": True,
+            "zoom": float(min(self.zoom_box.value(), maximum)),
+            "max_zoom": float(maximum),
+            "follow_cursor": self.follow_cursor_box.isChecked(),
+            "show_crosshair": self.crosshair_box.isChecked(),
             "show_pixel_scale": self.pixel_scale_box.isChecked(),
             "copy_mode": str(self.copy_mode_box.currentData()),
         }
@@ -258,10 +334,10 @@ class Magnifier(QWidget):
         self.wheel_capture.scrolled.connect(self.change_zoom)
         self.wheel_capture.copy_pressed.connect(self.copy_current_selection)
         self.zoom = float(config["zoom"])
-        self.max_zoom = float(config["max_zoom"])
+        self.max_zoom = min(20.0, float(config["max_zoom"]))
         self.view_width = int(config["window_width"])
         self.view_height = int(config["window_height"])
-        self.status_height = 48
+        self.status_height = 72
         self.setFixedSize(self.view_width, self.view_height)
         self.setMouseTracking(True)
         self.setWindowTitle("Cursor Magnifier")
@@ -399,22 +475,46 @@ class Magnifier(QWidget):
 
         r, g, b = self.rgb
         c, m, y, k = rgb_to_cmyk(r, g, b)
-        status = (
-            f"RGB  {r:3d}, {g:3d}, {b:3d}    "
-            f"CMYK  {c:.3f}, {m:.3f}, {y:.3f}, {k:.3f}    "
-            f"{self.zoom:.0f}×"
-        )
-        painter.fillRect(1, self.view_height - self.status_height - 1,
-                         self.view_width - 2, self.status_height, QColor(30, 30, 30))
+        status_top = self.view_height - self.status_height - 1
+        painter.fillRect(1, status_top, self.view_width - 2, self.status_height, QColor(30, 30, 30))
+        painter.setPen(QPen(QColor(70, 70, 70), 1))
+        painter.drawLine(1, status_top, self.view_width - 2, status_top)
+
+        # Row 1: color swatch, RGB and zoom.
+        swatch = QRect(9, status_top + 7, 30, 18)
+        painter.fillRect(swatch, QColor(r, g, b))
+        painter.setPen(QPen(QColor(210, 210, 210), 1))
+        painter.drawRect(swatch)
         painter.setPen(QColor(245, 245, 245))
-        painter.setFont(QFont("monospace", 9))
-        painter.drawText(
-            QRect(8, self.view_height - self.status_height + 2,
-                  self.view_width - 16, self.status_height - 4),
-            Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
-            status + "\nLaTeX: \\definecolor{pixel}{cmyk}{" +
-            f"{c:.3f},{m:.3f},{y:.3f},{k:.3f}" + "}"
-        )
+        painter.setFont(QFont("monospace", 9, QFont.Weight.Bold))
+        painter.drawText(48, status_top + 21, f"RGB  {r:3d}, {g:3d}, {b:3d}")
+        painter.setPen(QColor(120, 215, 255))
+        painter.drawText(self.view_width - 62, status_top + 21, f"{self.zoom:.1f}×")
+
+        # Row 2: CMYK percentages, matching the RGB typography.
+        painter.setPen(QColor(225, 225, 225))
+        painter.setFont(QFont("monospace", 9, QFont.Weight.Bold))
+        painter.drawText(48, status_top + 40,
+                         f"CMYK  {round(c*100):3d}%, {round(m*100):3d}%, {round(y*100):3d}%, {round(k*100):3d}%")
+
+        # Row 3: one single-line LaTeX xcolor readout.
+        latex_text = f"\\definecolor{{pixel}}{{cmyk}}{{{c:.3f},{m:.3f},{y:.3f},{k:.3f}}}"
+        label_x = 9
+        latex_y = status_top + 61
+        painter.setPen(QColor(255, 205, 110))
+        painter.setFont(QFont("Sans Serif", 8, QFont.Weight.Bold))
+        label = "LaTeX · xcolor:"
+        painter.drawText(label_x, latex_y, label)
+        label_width = painter.fontMetrics().horizontalAdvance(label) + 8
+        code_font = QFont("monospace", 8)
+        painter.setFont(code_font)
+        painter.setPen(QColor(205, 225, 235))
+        available = self.view_width - label_x - label_width - 8
+        code_width = painter.fontMetrics().horizontalAdvance(latex_text)
+        if code_width > available:
+            code_font.setPointSize(7)
+            painter.setFont(code_font)
+        painter.drawText(label_x + label_width, latex_y, latex_text)
         painter.setPen(QPen(QColor(180, 180, 180), 1))
         painter.drawRect(self.rect().adjusted(0, 0, -1, -1))
 
@@ -489,24 +589,23 @@ class Magnifier(QWidget):
 
     def open_settings(self):
         dialog = SettingsDialog(self.config, self)
+        dialog.settings_applied.connect(self.apply_settings)
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            new_config = dialog.values()
-            # Preserve future options already present in config.
-            self.config.update(new_config)
-            self.view_width = int(self.config["window_width"])
-            self.view_height = int(self.config["window_height"])
-            self.zoom = float(self.config["zoom"])
-            self.max_zoom = float(self.config["max_zoom"])
-            self.setFixedSize(self.view_width, self.view_height)
-            try:
-                save_config(self.config)
-                QMessageBox.information(
-                    self, "Beállítások mentve",
-                    "Window size and zoom take effect immediately.\n"
-                    "Restart the application to apply a changed global hotkey."
-                )
-            except Exception as exc:
-                QMessageBox.warning(self, "Save error", str(exc))
+            self.apply_settings(dialog.values())
+
+    def apply_settings(self, new_config):
+        # Preserve future options already present in config.
+        self.config.update(new_config)
+        self.view_width = int(self.config["window_width"])
+        self.view_height = int(self.config["window_height"])
+        self.zoom = min(float(self.config["zoom"]), float(self.config["max_zoom"]))
+        self.max_zoom = min(20.0, float(self.config["max_zoom"]))
+        self.setFixedSize(self.view_width, self.view_height)
+        self.update()
+        try:
+            save_config(self.config)
+        except Exception as exc:
+            QMessageBox.warning(self, "Save error", str(exc))
 
 
 
